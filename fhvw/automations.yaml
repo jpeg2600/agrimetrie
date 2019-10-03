@@ -443,7 +443,7 @@
 #
 # OUVRIR VENTILATEUR
 #################################
-- alias: "allumer le ventilateur dès que le volet s'ouvre" 
+- alias: "allumer le ventilateur dès que le volet s'ouvre TEST RELOAD AUTO." 
   trigger: 
   - platform: template
     value_template: "{{ states.binary_sensor.volet_ferme.state == 'off' }}"
@@ -464,4 +464,4 @@
     service: switch.turn_on
     entity_id: switch.ventilateur    
 
-#coucou test
+#test de reload
