@@ -1,0 +1,9 @@
+script:
+  update_config:
+    sequence:
+      - service: downloader/download_file
+        url: automation.weekend_mode
+      - delay:
+        seconds: 2
+      - service: automation.trigger
+        entity_id: automation.morning
