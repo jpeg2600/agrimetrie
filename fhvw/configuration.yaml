@@ -1,0 +1,269 @@
+ 
+# Configure a default setup of Home Assistant (frontend, api, etc)
+default_config:
+
+
+# Uncomment this if you are using SSL/TLS, running in Docker container, etc.
+# http:
+#   base_url: example.duckdns.org:8123
+
+# Text to speech
+tts:
+  - platform: google_translate  
+
+ 
+ 
+influxdb: !include influxdb.yaml
+
+  
+sensor:
+  - platform: time_date
+    display_options:
+      - 'time'
+      - 'date'
+      - 'date_time'
+      - 'date_time_iso'
+      - 'time_date'
+      - 'time_utc'
+      - 'beat'
+      
+  - platform: serial
+    serial_port: /dev/ttyACM0
+    baudrate: 9600
+    
+  - platform: template
+    sensors: # ENTITÉ: sensor.XXXXX
+        temperature_int:
+            friendly_name: "Intérieur"
+            unit_of_measurement: '°C'
+            value_template: "{{ state_attr('sensor.serial_sensor', 'temperature-0') | round(0) }}"
+            icon_template: mdi:thermometer
+        temperature_ext:
+            friendly_name: "Extérieur"
+            unit_of_measurement: '°C'
+            value_template: "{{ state_attr('sensor.serial_sensor', 'temperature-1') | round(0) }}"
+            icon_template: mdi:thermometer
+        temperature_mix:
+            friendly_name: "Mixing box"
+            unit_of_measurement: '°C'
+            value_template: "{{ state_attr('sensor.serial_sensor', 'temperature-2') | round(0) }}"
+            icon_template: mdi:thermometer
+        
+        #int_chauffage utilisée pour afficher l'ouverture sur le graphique
+        int_chauffage:
+          friendly_name: "Chauffage"
+          entity_id: switch.chauffage
+          value_template: >-
+            {% if is_state('switch.chauffage', 'on') %}
+              1
+            {% else %}
+              0
+            {% endif %}
+          icon_template: >-
+            {% if is_state('switch.chauffage', 'on') %}
+              mdi:radiator
+            {% else %}
+              mdi:radiator-off
+            {% endif %}
+            
+        indicateur_chauffage:
+          friendly_name: "Chauffage"
+          entity_id: switch.chauffage
+          value_template: >-
+            {% if is_state('switch.chauffage', 'on') %}
+              on
+            {% else %}
+              off
+            {% endif %}
+          icon_template: >-
+            {% if is_state('switch.chauffage', 'on') %}
+              mdi:radiator
+            {% else %}
+              mdi:radiator-off
+            {% endif %}
+            
+        controle_auto:
+          friendly_name: "Contrôle automatique"
+          entity_id: input_boolean.ctrlauto
+          value_template: >-
+            {% if is_state('input_boolean.ctrlauto', 'on') %}
+              on
+            {% else %}
+              off
+            {% endif %}
+          icon_template: >-
+            {% if is_state('input_boolean.ctrlauto', 'on') %}
+              mdi:robot
+            {% else %}
+              mdi:sleep
+            {% endif %}
+            
+        volet_ouvert: 
+          friendly_name: "Volet ouvert"
+          value_template: "{{ state_attr('sensor.serial_sensor', 'swOuvert') }}"
+        volet_ferme: 
+          friendly_name: "Volet ferme"
+          value_template: "{{ state_attr('sensor.serial_sensor', 'swFerme') }}"
+        porte_ferme: 
+          friendly_name: "Porte Ouverte"
+          value_template: "{{ state_attr('sensor.serial_sensor', 'swporte') }}"
+
+  
+  - platform: systemmonitor
+    resources:
+      - type: disk_use_percent
+        arg: /
+      - type: memory_free
+      - type: last_boot
+      - type: disk_free
+        arg: /
+      - type: memory_use_percent
+      - type: load_1m
+      - type: ipv4_address
+        arg: eth0
+      - type: ipv4_address
+        arg: wlan0
+
+input_datetime:
+  heure_sommeil:
+    name: Heure de couvre-feu du ventilateur
+    has_date: false
+    has_time: true
+  heure_eveil:
+    name: Heure d'éveil du ventilateur
+    has_date: false
+    has_time: true
+
+binary_sensor:
+  - platform: template
+    sensors:
+      volet_ouvert: 
+          friendly_name: "Volet ouvert"
+          #device_class: opening
+          value_template: "{{ is_state('sensor.volet_ouvert', 'on') }}"
+      volet_ferme: 
+        friendly_name: "Volet ferme"
+        #device_class: opening
+        value_template: "{{ is_state('sensor.volet_ferme', 'on') }}"
+      porte_ferme: 
+        friendly_name: "Porte Ouverte"
+        #device_class: opening
+        value_template: "{{ is_state('sensor.porte_ferme', 'off') }}"
+
+
+        
+input_number:
+  attente:
+    name: Temps d'attente
+    # initial: 5
+    min: 0
+    max: 15
+    unit_of_measurement: min
+    step: 1
+    icon: mdi:timer
+  fermeture:
+    name: Durée de fermeture
+    # initial: 5
+    min: 0
+    max: 60
+    unit_of_measurement: sec
+    step: 1
+    icon: mdi:garage
+  ouverture:
+    name: Durée d'ouverture
+    # initial: 10
+    min: 0
+    max: 60
+    unit_of_measurement: sec
+    step: 1
+    icon: mdi:garage-open
+  seuilmin:
+    name: Seuil minimum
+    # initial: 15
+    min: 0
+    max: 30
+    unit_of_measurement: '°C'
+    step: 1
+    icon: mdi:radiator
+  hyst:
+    name: Hystérésis
+    # initial: 3
+    min: 0
+    max: 10
+    unit_of_measurement: '°C'
+    step: 1
+    icon: mdi:thermometer-lines
+  seuilmax:
+    name: Seuil max
+    # initial: 18
+    min: 0
+    max: 30
+    unit_of_measurement: '°C'
+    step: 1
+    icon: mdi:garage-alert
+  ventilateur_on:
+    name: ventilateur allumé pendant... 
+    # initial: 5 ################TO FIX
+    min: 0
+    max: 120
+    unit_of_measurement: 'min'
+    step: 1
+    icon: mdi:fan
+  ventilateur_off:
+    name: ventilateur fermé pendant... 
+    # initial: 2 ################TO FIX
+    min: 0
+    max: 120
+    unit_of_measurement: 'min'
+    step: 1
+    icon: mdi:fan-off
+    
+input_boolean:
+  ctrlauto:
+    name: Contrôle automatique
+    # initial: on
+    icon: mdi:robot
+  fan_auto:
+    name: Contrôle automatique du ventilateur
+    # initial: on
+    icon: mdi:robot
+  fan_sleepy:
+    name: Couvre-feu et éveil automatique du ventilateur
+    # initial: on
+    icon: mdi:robot
+  chauffage_auto:
+    name: Contrôle automatique du chauffage
+    # initial: on
+    icon: mdi:robot
+  volets_auto:
+    name: Contrôle automatique des volets
+    # initial: on
+    icon: mdi:robot
+          
+  en_ouverture:
+    name: Volet est-il en ouverture
+    # initial: off
+    icon: mdi:garage-alert
+  en_fermeture:
+    name: Volet en fermeture
+    # initial: off
+    icon: mdi:garage-alert
+
+    
+switch:
+  - platform: rpi_gpio
+    ports:
+      4: Ouvrir volets
+      22: Fermer volets
+      6: Chauffage
+      26: Ventilateur
+
+
+downloader:
+  download_dir: downloads      
+      
+group: !include groups.yaml
+automation: !include automations.yaml
+script: !include scripts.yaml
+frontend:
+  themes: !include themes.yaml
