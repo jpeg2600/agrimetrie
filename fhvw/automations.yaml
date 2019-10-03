@@ -1,0 +1,466 @@
+
+# sensor.temperature_int = intérieur sensor.temperature0
+# sensor.temperature_ext = extérieur sensor.temperature1
+# sensor.temperature_mix = mixing box sensor.temperature2 
+
+
+######
+# OUVRIR LES VOLETS
+#
+# TIGGER:
+#   Quand la température intérieure devient plus grande que le seuil maximum + hystérésis
+#   Quand la température intérieure devient plus haute que la mix box
+#   Quand la température intérieure devient plus haute que la température extérieur
+#
+# SI:
+#   le contrôle automatique est activé
+#   Si le volet est n'est pas encore complètement ouverture
+#   si la température intérieure est plus grande que le seuil maximum + hystérésis
+#   si la température intérieure est plus grande que la température extérieure    
+#   Si la température intérieure est plus grande que la mix box 
+#
+# ALLUMER LE RELAI D'OUVERTURE DU VOLET
+#
+##########
+- id: ouvrir_volets
+  alias: 'trop chaud -> Ouvrir les volets automatiquement'
+  trigger:
+    
+  - platform: template
+    value_template: "{{ (states.sensor.temperature_int.state|float) > (states.input_number.seuilmax.state|float) + (states.input_number.hyst.state|float) }}"
+  - platform: template
+    value_template: "{{ (states.sensor.temperature_int.state|float) > (states.sensor.temperature_mix.state|float) }}"
+  - platform: template
+    value_template: "{{ (states.sensor.temperature_int.state|float) > (states.sensor.temperature_ext.state|float) }}"
+  - platform: template
+    value_template: "{{ states.switch.ouvrir_volets.state == 'off' }}"
+    for:
+      minutes: "{{ (states.input_number.attente.state|int)  }}"
+  - platform: homeassistant
+    event: start
+  condition:
+    condition: and 
+    conditions:
+      - condition: template
+        value_template: "{{ states.input_boolean.volets_auto.state == 'on' }}"
+      - condition: template
+        value_template: "{{ states.binary_sensor.volet_ouvert.state == 'off' }}"
+      - condition: template
+        value_template: "{{ (states.sensor.temperature_int.state|float) > (states.input_number.seuilmax.state|float) + (states.input_number.hyst.state|float) }}"
+      - condition: template
+        value_template: "{{ (states.sensor.temperature_int.state|float) > (states.sensor.temperature_ext.state|float) }}"
+      - condition: template  
+        value_template: "{{ (states.sensor.temperature_int.state|float) > (states.sensor.temperature_mix.state|float) }}"
+  action:
+    service: switch.turn_on
+    entity_id: switch.ouvrir_volets
+
+    # LORSQUE LE VOLET A ÉTÉ EN OUVERTURE PENDANT X SECONDES
+    # RELÂCHER LE RELAI DU MOTEUR DE VOLET
+- alias: "délai d'ouverture" 
+  trigger: 
+  - platform: state
+    entity_id: switch.ouvrir_volets
+    to: 'on'
+    for:
+      seconds: "{{ (states.input_number.ouverture.state|int)  }}"
+  action:
+    service: switch.turn_off
+    entity_id: switch.ouvrir_volets
+    
+    # SI LA SWITCH DU VOLET COMPLÈTEMENT OUVERT EST ACTIVÉE
+    # RELÂCHER LE RELAI DU MOTEUR DE VOLET
+- alias: "Arrêter l'ouverture dès que la switch est activée"
+  trigger: 
+  - platform: state
+    entity_id: binary_sensor.volet_ouvert
+    to: 'on'
+  action:
+    service: switch.turn_off
+    entity_id: switch.ouvrir_volets
+    
+######
+# FERMER LES VOLETS s'il fait trop froid
+# 
+# TRIGGER:
+#   quand la temp intérieure traverse le seuil minimum - hystérésis
+#   quand le volet s'est arrêté la durée du temps d'attente
+#   quand la température de la mixing box devient plus petite que le seuil minimum
+#
+# SI:
+#   Le contrôle automatique est activé 
+#   ET QUE Les volets ne sont pas déjà fermés
+#   ET QUE La température de la mixing box est plus basse que le seuil minimal - hystérésis
+#
+# ALLUMER LE RELAI DU MOTEUR DE FERMETURE DES VOLET
+#
+##########    
+- id: fermer_volets
+  alias: 'trop froid -> fermer les volets automatiquement'
+  
+  trigger:
+    
+  - platform: template
+    value_template: "{{ (states.sensor.temperature_int.state|float) < (states.input_number.seuilmin.state|float)  }}"
+  - platform: template
+    value_template: "{{ (states.sensor.temperature_mix.state|float) < (states.input_number.seuilmin.state|float)  }}"
+  - platform: template
+    value_template: "{{ states.switch.fermer_volets.state == 'off' }}"
+    for:
+      minutes: "{{ (states.input_number.attente.state|int)  }}"
+
+  condition:
+    condition: and  
+    conditions:
+      - condition: template
+        value_template: "{{ states.input_boolean.volets_auto.state == 'on' }}"
+      - condition: template
+        value_template: "{{ states.binary_sensor.volet_ferme.state == 'off' }}"
+      - condition: template
+        value_template: "{{ (states.sensor.temperature_mix.state|float) < (states.input_number.seuilmin.state|float)  }}"
+        
+  action:
+    service: switch.turn_on
+    entity_id: switch.fermer_volets
+
+######
+# FERMER LES VOLETS s'il faut trop chaud dehors
+# 
+# TRIGGER:
+#   quand la temp de la mixing box est plus grande que le seuil max
+#   quand la température extérieur est plus grande que le seuil max 
+#
+# SI:
+#   Le contrôle automatique est activé 
+#   ET QUE Les volets ne sont pas déjà fermés
+#   ET QUE La température extérieur est plus grande que le seuil max - hystérésis
+#
+# ALLUMER LE RELAI DU MOTEUR DE FERMETURE DES VOLET
+#
+##########    
+- id: fermer_volets_chaleur
+  alias: 'trop chaud dehors -> fermer les volets automatiquement'
+  
+  trigger:
+    
+  - platform: template
+    value_template: "{{ (states.sensor.temperature_mix.state|float) > (states.input_number.seuilmax.state|float) }}"
+  - platform: template
+    value_template: "{{ (states.sensor.temperature_ext.state|float) > (states.input_number.seuilmax.state|float) }}"
+  - platform: template
+    value_template: "{{ states.switch.fermer_volets.state == 'off' }}"
+    for:
+      minutes: "{{ (states.input_number.attente.state|int)  }}"
+
+  condition:
+    condition: and  
+    conditions:
+      - condition: template
+        value_template: "{{ states.input_boolean.volets_auto.state == 'on' }}"
+      - condition: template
+        value_template: "{{ states.binary_sensor.volet_ferme.state == 'off' }}"
+      - condition: template
+        value_template: "{{ (states.sensor.temperature_ext.state|float) > (states.input_number.seuilmax.state|float)  }}"
+        
+  action:
+    service: switch.turn_on
+    entity_id: switch.fermer_volets
+      
+    # LORSQUE LE VOLET A ÉTÉ EN FERMETURE PENDANT X SECONDES
+    # RELÂCHER LE RELAI DU MOTEUR DE FERMETURE DE VOLET
+- alias: "délai fermeture"
+  trigger: 
+  - platform: state
+    entity_id: switch.fermer_volets
+    to: 'on'
+    for:
+      seconds: "{{ (states.input_number.fermeture.state|int)  }}"
+  action:
+    service: switch.turn_off
+    entity_id: switch.fermer_volets
+    
+    # SI LA SWITCH DU VOLET FERMÉ EST ACTIVÉE
+    # RELÂCHER LE RELAI DU MOTEUR DE FERMETURE DE VOLET
+- alias: "Arrêter la fermeture dès que la switch est activée"
+  trigger: 
+  - platform: state
+    entity_id: binary_sensor.volet_ferme
+    to: 'on'
+  action:
+    service: switch.turn_off
+    entity_id: switch.fermer_volets
+
+######
+# ALLUMER LE CHAUFFAGE
+# 
+# TRIGGER:
+#   quand la temp intérieure traverse le seuil minimum - hystérésis
+#   quand le volet est fermé depuis le nombre de minutes d'attente
+#   
+#   
+# SI:
+#   Le contrôle automatique est activé
+#   Les volets sont fermés
+#   La température intérieur est plus basse que le seuil minimal - hystérésis
+#
+# ALLUME LE CHAUFFAGE  
+#
+##########    
+    
+- id: allumer_chauffage
+  alias: 'trop froid pis les volets sont fermés -> allumer chauffage automatiquement'
+  
+  trigger:
+  - platform: template
+    value_template: "{{ (states.sensor.temperature_int.state|float) < (states.input_number.seuilmin.state|float) - (states.input_number.hyst.state|float) }}"
+  - platform: template
+    value_template: "{{ states.binary_sensor.volet_ferme.state == 'on' }}"
+    for:
+      minutes: "{{ (states.input_number.attente.state|int)  }}"
+  - platform: homeassistant
+    # Event can also be 'shutdown'
+    event: start
+  condition:
+    condition: and  
+    conditions:
+      - condition: template
+        value_template: "{{ states.input_boolean.chauffage_auto.state == 'on' }}"
+      - condition: template
+        value_template: "{{ states.binary_sensor.volet_ferme.state == 'on' }}"
+      - condition: template
+        value_template: "{{ (states.sensor.temperature_int.state|float) < (states.input_number.seuilmin.state|float) - (states.input_number.hyst.state|float) }}"
+
+  action:
+    service: switch.turn_on
+    entity_id: switch.chauffage
+
+######
+# ÉTEINDRE LE CHAUFFAGE
+# 
+# TRIGGER:
+#   quand la temp intérieure devient plus chaude que le seuil minimum + hystérésis
+#   quand la temp intérieure de la mix box est plus petite qu'à l'intérieur
+#   quand on ouvre les volets
+# SI:
+#   Le contrôle automatique est activé
+#   La température intérieur est plus haute que le seuil minimal 
+#
+# ÉTEINDRE LE RELAI DE CHAUFFAGE
+##########    
+
+    
+- id: éteindre_chauffage
+  alias: 'trop chaud  -> fermer chauffage automatiquement'
+  
+  trigger:
+    
+  - platform: template
+    value_template: "{{ (states.sensor.temperature_int.state|float) > (states.input_number.seuilmin.state|float) + (states.input_number.hyst.state|float)}}"
+  - platform: template
+    value_template: "{{ (states.sensor.temperature_mix.state|float) < (states.sensor.temperature_int.state|float) }}"
+  - platform: template
+    value_template: "{{ states.binary_sensor.volet_ouvert.state == 'off' }}"
+
+  condition:
+    condition: and  
+    conditions:
+      - condition: template
+        value_template: "{{ states.input_boolean.chauffage_auto.state == 'on' }}"
+      - condition: template
+        value_template: "{{ (states.sensor.temperature_int.state|float) > (states.input_number.seuilmin.state|float) + (states.input_number.hyst.state|float) }}"
+      - condition: template
+        value_template: "{{ states.switch.chauffage.state == 'on' }}"   
+        
+  action:
+    service: switch.turn_off
+    entity_id: switch.chauffage
+
+    # QUAND LA SWITCH DE VOLET FERMÉE EST DÉSACTIVÉE
+    # ARRÊTER LE CHAUFFAGE    
+- alias: "Arrêter le chauffage dès que la switch est désactivée"
+  trigger: 
+  - platform: state
+    entity_id: binary_sensor.volet_ferme
+    to: 'off'
+  action:
+    service: switch.turn_off
+    entity_id: switch.chauffage
+
+    
+#######################
+#
+# METTRE LE VENTILATEUR EN VEILLE SI LE COUVRE-FEU EST DÉPASSÉ 
+# 
+# TRIGGER:
+#   L'heure actuelle dépasse l'heure du couvre-feu
+# SI:
+#   la fan est en mode automatique
+#   la fan est en mode éveil automatique
+#
+# DÉSACTIVER LE CONTRÔLE AUTOMATIQEU DU VENTILATEUR
+#################################
+- alias: "Activer couvre-feu du ventilateur pour laisser le voisin dormir" 
+  trigger: 
+  - platform: template
+    value_template: "{{ states('sensor.time') == (state_attr('input_datetime.heure_sommeil', 'timestamp') | int | timestamp_custom('%H:%M', False)) }}"
+  condition:
+    condition: and  
+    conditions:
+      - condition: template
+        value_template: "{{ states.input_boolean.fan_auto.state == 'on' }}"
+      - condition: template
+        value_template: "{{ states.input_boolean.fan_sleepy.state == 'on' }}"
+
+  action:
+    - service: input_boolean.turn_off
+      entity_id: input_boolean.fan_auto
+    - service: switch.turn_off
+      entity_id: switch.ventilateur
+    
+#######################
+#
+# METTRE LE VENTILATEUR EN MODE AUTOMATIQUE L'HEURE D'ÉVEIL EST PASSÉ 
+# 
+# TRIGGER:
+#   L'heure actuelle dépasse l'heure d'éveil
+# SI:
+#   la fan est en mode automatique
+#   la fan est en mode éveil automatique
+#
+# ACTIVE LE CONTRÔLE AUTOMATIQUE DU VENTILATEUR ET ACTIVE LE RELAI
+#################################
+- alias: "Activer couvre-feu du ventilateur pour laisser le voisin dormir" 
+  trigger: 
+  - platform: template
+    value_template: "{{ states('sensor.time') == (state_attr('input_datetime.heure_eveil', 'timestamp') | int | timestamp_custom('%H:%M', False)) }}"
+  condition:
+    condition: and  
+    conditions:
+      - condition: template
+        value_template: "{{ states.input_boolean.fan_auto.state == 'off' }}"
+      - condition: template
+        value_template: "{{ states.input_boolean.fan_sleepy.state == 'on' }}"
+
+  action:
+    - service: input_boolean.turn_on
+      entity_id: input_boolean.fan_auto
+    - service: switch.turn_on
+      entity_id: switch.ventilateur
+    
+
+    
+#######################
+#
+# DÉMARRER LE VENTILATEUR PÉRIODIQUEMENT 
+# 
+# TRIGGER:
+#   Quand le ventilateur est éteint depuis le temps d'attente en minutes
+#   Quand le volet s'ouvre
+#   Quand home assistant démarre
+# SI:
+#   la fan est en mode automatique
+#   La switch de volet est fermée 
+#   Si le ventilateur est éteint
+#
+# ACTIVER LE RELAI DE VENTILATEUR
+#################################
+- alias: "allumer le ventilateur périodiquement si le volet est fermé" 
+  trigger: 
+  - platform: state
+    entity_id: switch.ventilateur
+    to: 'off'
+    for:
+      minutes: "{{ (states.input_number.ventilateur_off.state|int)  }}"
+  - platform: template
+    value_template: "{{ states.binary_sensor.volet_ferme.state == 'on' }}"
+  - platform: homeassistant
+    event: start    
+  condition:
+    condition: and  
+    conditions:
+      - condition: template
+        value_template: "{{ states.input_boolean.fan_auto.state == 'on' }}"
+#      - condition: template
+#        value_template: "{{ states.binary_sensor.volet_ferme.state == 'on' }}"
+      - condition: template
+        value_template: "{{ states.switch.ventilateur.state == 'off' }}"   
+
+  action:
+    service: switch.turn_on
+    entity_id: switch.ventilateur    
+    
+    
+#######################
+#
+# FERMER LE VENTILATEUR PÉRIODIQUEMENT 
+# 
+# TRIGGER:
+#   Quand le ventilateur est ALLUMÉ depuis le temps d'attente en minutes
+#   Quand le volet se ferme
+#   Quand home assistant démarre
+# SI:
+#   la fan est en mode automatique
+#   La switch de volet est activé 
+#   Si le ventilateur est allumé
+#
+# FERMER LE RELAI DE VENTILATEUR
+#################################
+    
+- alias: "fermer le ventilateur périodiquement" 
+  trigger: 
+  - platform: state
+    entity_id: switch.ventilateur
+    to: 'on'
+    for:
+      minutes: "{{ (states.input_number.ventilateur_on.state|int)  }}"
+  - platform: template
+    value_template: "{{ states.binary_sensor.volet_ferme.state == 'on' }}"
+    
+  condition:
+    condition: and  
+    conditions:
+      - condition: template
+        value_template: "{{ states.input_boolean.fan_auto.state == 'on' }}"
+#      - condition: template
+#        value_template: "{{ states.binary_sensor.volet_ferme.state == 'on' }}"
+      - condition: template
+        value_template: "{{ states.switch.ventilateur.state == 'on' }}"        
+  action:
+    service: switch.turn_off
+    entity_id: switch.ventilateur    
+
+    
+#######################
+#
+# ALLUMER LE VENTILATEUR DÈS QUE LE VOLET S'OUVRE 
+# 
+# TRIGGER:
+#   Quand la switch de volet fermée est désactivée depuis 3 secondes (quand le volet s'ouvre)
+#   Quand on appuie sur le bouton d'ouverture de volet
+# SI:
+#   la fan est en mode automatique
+#   La switch de relai fermé est désactivée
+#
+# OUVRIR VENTILATEUR
+#################################
+- alias: "allumer le ventilateur dès que le volet s'ouvre" 
+  trigger: 
+  - platform: template
+    value_template: "{{ states.binary_sensor.volet_ferme.state == 'off' }}"
+    for:
+      seconds: 3
+  - platform: state
+    entity_id: switch.ouvrir_volets
+    to: 'on'
+  condition:
+    condition: and  
+    conditions:
+      - condition: template
+        value_template: "{{ states.input_boolean.fan_auto.state == 'on' }}"
+      - condition: template
+        value_template: "{{ states.binary_sensor.volet_ferme.state == 'off' }}"
+
+  action:
+    service: switch.turn_on
+    entity_id: switch.ventilateur    
+
