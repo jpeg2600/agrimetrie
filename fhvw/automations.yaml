@@ -464,3 +464,4 @@
     service: switch.turn_on
     entity_id: switch.ventilateur    
 
+#coucou
